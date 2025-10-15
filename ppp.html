@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Ultimate Final Game - Triple-A Version</title>
+    <style>
+        /* Basic Styles Wahi Rahenge */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1a1a2e;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: pan-y;
+        }
+        #gameCanvas {
+            border: 5px solid #00d9ff;
+            background-color: #0f0f2d;
+            display: block;
+        }
+        #gameInfo {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+        #saveMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            background-color: rgba(76, 175, 80, 0.9);
+            color: white;
+            border-radius: 8px;
+            font-size: 24px;
+            font-weight: bold;
+            display: none;
+            z-index: 20;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+        }
+        /* NAYA: Mobile Controls Style */
+        .mobile-button {
+            background-color: rgba(50, 50, 50, 0.7);
+            color: white;
+            border: 2px solid #ffcc00;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+            touch-action: manipulation;
+        }
+        #mobile-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            z-index: 10;
+            user-select: none;
+        }
+        .control-group {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="gameInfo">
+        <p>Current Level: <span id="levelDisplay"></span></p>
+        <p>High Score: <span id="highScoreDisplay">0</span></p> </div>
+    
+    <div id="saveMessage">💾 Game Saved!</div> 
+
+    <div id="mobile-controls">
+        <div class="control-group">
+            <button class="mobile-button" id="btn-left">◀</button>
+            <button class="mobile-button" id="btn-right">▶</button>
+        </div>
+        
+        <div class="control-group">
+            <button class="mobile-button" id="btn-jump">↑</button>
+            <button class="mobile-button" id="btn-fire">💥</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME CONFIGURATION ---
+        const MAX_LEVELS = 20; 
+        const START_LEVEL = 3; 
+        let CURRENT_LEVEL = START_LEVEL;
+        let GAME_PAUSED = false;
+        let CUSTOM_ENEMIES = []; 
+        let isSaveMessageVisible = false;
+
+        // NAYA: Score Variables
+        let currentScore = 0; 
+        let highScore = 0;
+
+        // --- GAME ELEMENT REFERENCES ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const highScoreDisplay = document.getElementById('highScoreDisplay'); // NAYA: High Score Element
+        const saveMessageElement = document.getElementById('saveMessage'); 
+
+        // NAYA: Sound Effects (Placeholder)
+        const sounds = {
+            shoot: new Audio('https://example.com/shoot.mp3'),
+            jump: new Audio('https://example.com/jump.mp3'),
+            damage: new Audio('https://example.com/damage.mp3')
+        };
+        
+        // --- GAME ENTITY CLASSES (Simplified for context) ---
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height - 30;
+                this.size = 20;
+                this.color = '#00ffaa';
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+            }
+            // NAYA: Jump Logic (Placeholder)
+            jump() {
+                // sounds.jump.play(); // Sound Effect Playback
+                this.y -= 5;
+            }
+        }
+
+        class Enemy {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.size = 15;
+                this.type = type; 
+                this.color = this.getColor();
+            }
+            getColor() {
+                switch(this.type) {
+                    case 'fast': return '#ff0000';
+                    case 'tank': return '#ffff00';
+                    case 'ghost': return '#cc00ff';
+                    default: return '#cccccc';
+                }
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- HIGH SCORE & SOUND FUNCTIONS ---
+
+        function updateHighScore(newScore) {
+            if (newScore > highScore) {
+                highScore = newScore;
+                localStorage.setItem('highScore', highScore.toString());
+                highScoreDisplay.textContent = highScore;
+            }
+        }
+
+        function loadHighScore() {
+            const savedScore = localStorage.getItem('highScore');
+            if (savedScore) {
+                highScore = parseInt(savedScore);
+            }
+            highScoreDisplay.textContent = highScore;
+        }
+
+        // --- GAME LOGIC FUNCTIONS ---
+        
+        function showSaveConfirmation() {
+             if (isSaveMessageVisible) return;
+             isSaveMessageVisible = true;
+             saveMessageElement.style.display = 'block';
+             
+             setTimeout(() => {
+                 saveMessageElement.style.display = 'none';
+                 isSaveMessageVisible = false;
+             }, 1500);
+        }
+
+        function saveProgress() {
+            localStorage.setItem('gameLevel', CURRENT_LEVEL.toString());
+            // NAYA: High Score ko bhi save karo
+            updateHighScore(currentScore);
+            showSaveConfirmation(); 
+        }
+
+        function loadProgress() {
+            const savedLevel = localStorage.getItem('gameLevel');
+            
+            if (savedLevel) {
+                CURRENT_LEVEL = parseInt(savedLevel);
+            } else {
+                CURRENT_LEVEL = START_LEVEL;
+            }
+            
+            // FINAL SAFETY CHECK: Force start at Level 3
+            if (CURRENT_LEVEL < START_LEVEL) {
+                CURRENT_LEVEL = START_LEVEL;
+            }
+            
+            loadHighScore(); // NAYA: High Score Load karo
+            levelDisplay.textContent = CURRENT_LEVEL;
+        }
+
+        function initializeLevel(level) {
+            CUSTOM_ENEMIES = [];
+            levelDisplay.textContent = level;
+
+            if (level > MAX_LEVELS) {
+                alert("CONGRATULATIONS! High Score: " + currentScore);
+                return;
+            }
+
+            // Enemy spawning logic wahi rahega...
+            const enemyCount = 5 + (level * 2);
+            for (let i = 0; i < enemyCount; i++) {
+                let x = Math.random() * canvas.width;
+                let y = Math.random() * (canvas.height / 3);
+                let enemyType = 'default';
+
+                if (level % 5 === 0) {
+                    enemyType = 'tank';
+                } else if (level % 3 === 0) {
+                    enemyType = 'fast';
+                } else if (level >= 10 && Math.random() < 0.2) {
+                    enemyType = 'ghost';
+                }
+                
+                CUSTOM_ENEMIES.push(new Enemy(x, y, enemyType));
+            }
+        }
+
+        // --- INPUT HANDLERS (Keyboard aur NAYA Mobile Touch) ---
+
+        let keysPressed = {}; 
+        
+        // Keyboard Handlers (Wahi rahenge)
+        document.addEventListener('keydown', (e) => {
+            keysPressed[e.key.toLowerCase()] = true;
+            if (e.key === 'w' || e.key === 'W') {
+                player.jump();
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            keysPressed[e.key.toLowerCase()] = false;
+        });
+
+        // NAYA: Mobile Touch Handlers
+        const mobileControls = {
+            'btn-left': 'a',
+            'btn-right': 'd',
+            'btn-jump': 'w',
+            'btn-fire': 'space' 
+        };
+
+        function setupMobileControls() {
+            Object.keys(mobileControls).forEach(id => {
+                const button = document.getElementById(id);
+                if (button) {
+                    const key = mobileControls[id];
+                    
+                    button.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        keysPressed[key] = true;
+                        if (key === 'w') {
+                            player.jump(); // Jump ka action
+                        }
+                        // NAYA: Sound effect for fire
+                        // if (key === 'space') { sounds.shoot.play(); } 
+                    });
+                    
+                    button.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        keysPressed[key] = false;
+                    });
+                }
+            });
+        }
+        
+        // --- MAIN GAME LOOP ---
+
+        function gameLoop() {
+            if (GAME_PAUSED) return;
+
+            // NAYA: Score badhana (Placeholder for enemy kill or time)
+            currentScore++;
+
+            // Player Movement (Keyboard aur Mobile dono keysPressed use karenge)
+            if (keysPressed['a'] || keysPressed['arrowleft']) { player.x -= 3; }
+            if (keysPressed['d'] || keysPressed['arrowright']) { player.x += 3; }
+            // if (keysPressed['space']) { /* Shoot logic yahan aayega */ } 
+
+            // Clear and Draw wahi rahenge...
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#0f0f2d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            player.draw();
+
+            // Enemy update aur draw wahi rahenge...
+            CUSTOM_ENEMIES.forEach(enemy => {
+                enemy.draw();
+                enemy.y += 0.5 + (CURRENT_LEVEL * 0.1); 
+                if (enemy.y > canvas.height) {
+                    enemy.y = 0; 
+                }
+                // NAYA: Player damage logic (Placeholder)
+                if (Math.abs(player.x - enemy.x) < 20 && Math.abs(player.y - enemy.y) < 20) {
+                    // sounds.damage.play(); // Damage sound
+                }
+            });
+
+            // Auto-Save Trigger
+            if (window.frameCount % 300 === 0) { 
+                saveProgress();
+            }
+
+            // Level Completion Trigger
+            if (window.frameCount % 1000 === 0 && CURRENT_LEVEL < MAX_LEVELS) {
+                CURRENT_LEVEL++;
+                saveProgress();
+                initializeLevel(CURRENT_LEVEL);
+            }
+
+            window.frameCount++;
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Initializes the game at start.
+         */
+        function initializeGame() {
+            window.frameCount = 0;
+            window.player = new Player();
+            loadProgress();
+            initializeLevel(CURRENT_LEVEL);
+            setupMobileControls(); // NAYA: Mobile Controls setup
+            gameLoop();
+        }
+
+        // --- START THE GAME ---
+        initializeGame();
+
+    </script>
+</body>
+</html>
